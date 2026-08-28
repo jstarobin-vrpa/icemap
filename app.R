@@ -16,7 +16,7 @@ library(tidyverse)
 
 # import data
 
-load("~/Documents/2026 | ACLU-PA Voting Rights Litigation Associate/projects/ice/data/ice_data.RData")
+load("ice_data.RData")
 carto_api <- "cb1_2dqa_1_ffc22f31de11903b2ce40e4f"
 
 # define UI     
