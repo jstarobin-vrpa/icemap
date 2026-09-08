@@ -21,7 +21,7 @@ load("ice_data.RData")
 # define UI     
 
 ui <- navbarPage(
-  title = paste("ICE in Pennsylvania, 2026"),
+  title = paste("ICE in Pennsylvania, 2026 - IN PROGRESS - DO NOT SHARE"),
   # set theme
   theme = shinytheme("cosmo"),
   # set HTML tags style
@@ -73,7 +73,7 @@ ui <- navbarPage(
                                             #            "Proportion Non-White (%)",
                                             #            "Proportion Hispanic or Latino (%)",
                                                         "None"),
-                                            selected = "Total Population Non-White",
+                                            selected = "Total Population",
                                             multiple = FALSE
                                           ),
                                           #pickerInput(
