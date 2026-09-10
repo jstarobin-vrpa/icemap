@@ -21,7 +21,7 @@ load("ice_data.RData")
 # define UI     
 
 ui <- navbarPage(
-  title = paste("ICE in Pennsylvania, 2026 - IN PROGRESS - DO NOT SHARE"),
+  title = paste("ICE in Pennsylvania, 2026 - FOR INTERNAL USE ONLY - DO NOT SHARE"),
   # set theme
   theme = shinytheme("cosmo"),
   # set HTML tags style
@@ -38,13 +38,15 @@ ui <- navbarPage(
                                           style = "primary",
                                           pickerInput(
                                             inputId = "ice",
-                                            label = "ICE Activity",
-                                            choices = c("Field Offices",
-                                                        "Detention Facilities",
-                                                        "287(g) Agreements"),
-                                            selected = c("Field Offices",
-                                                         "Detention Facilities",
-                                                         "287(g) Agreements"),
+                                            label = "Law Enforcement Activity",
+                                            choices = c("ICE Field Offices",
+                                                        "ICE Detention Facilities",
+                                                        "287(g) Agreements",
+                                                        "FBI Offices"),
+                                            selected = c("ICE Field Offices",
+                                                         "ICE Detention Facilities",
+                                                         "287(g) Agreements",
+                                                         "FBI Offices"),
                                             multiple = TRUE,
                                             options = pickerOptions(actionsBox = TRUE,
                                                                     selectAllText = NULL,
@@ -97,7 +99,7 @@ ui <- navbarPage(
                                                         "Municipalities",
                                                         "US House Districts",
                                                         "PA Senate Districts",
-                                                        "PA General Assembly Districts",
+                                                        "PA House Districts", 
                                                         "None"),
                                             selected = "Counties",
                                             multiple = FALSE
@@ -122,7 +124,7 @@ ui <- navbarPage(
                           leafletOutput(outputId = "leafletMap",
                                         width = "98.5%"),
                  ),
-                 tabPanel("ICE Activity Table",
+                 tabPanel("Law Enforcement Activity Table",
                           br(),
                           downloadBttn(outputId = "iceActivityCSV",
                                        label = "Export as .CSV",
@@ -135,7 +137,7 @@ ui <- navbarPage(
                                    width = "98.5%"),
                           br()
                  ),
-                 tabPanel("County-Level Readout",
+                 tabPanel("Background Geography Table",
                           br(),
                           downloadBttn(outputId = "iceAggCSV",
                                        label = "Export as .CSV",
@@ -173,9 +175,10 @@ server <- function(input, output) {
                  is.na(.$signed))
         else 
           . } %>%
-      mutate(icetype_color = case_when(icetype == "Field Offices" ~ "#eb301e",
-                                       icetype == "Detention Facilities" ~ "#9c4deb",
+      mutate(icetype_color = case_when(icetype == "ICE Field Offices" ~ "#eb301e",
+                                       icetype == "ICE Detention Facilities" ~ "#9c4deb",
                                        icetype == "287(g) Agreements" ~ "orange",
+                                       icetype == "FBI Offices" ~ "#95b9ed",
                                        .default = "black")) %>%
       arrange(icetype) %>%
       return()
@@ -186,17 +189,17 @@ server <- function(input, output) {
   
   # create HTML tags for ICE labels and popups
   tags_ice <- reactive({
-    case_when(data_ice_point_filtered()$icetype == "Field Offices" ~                 
+    case_when(data_ice_point_filtered()$icetype == "ICE Field Offices" ~                 
                 paste0(ifelse(is.na(data_ice_point_filtered()$supervising_office),
-                              paste0("<b>Field Office:</b> ", data_ice_point_filtered()$name),
-                              paste0("<b>Field Office:</b> ", data_ice_point_filtered()$name, " ", data_ice_point_filtered()$type,
+                              paste0("<b>ICE Field Office:</b> ", data_ice_point_filtered()$name),
+                              paste0("<b>ICE Field Office:</b> ", data_ice_point_filtered()$name, " ", data_ice_point_filtered()$type,
                                      "<br>
                                      <b>Supervising Office:</b> ", data_ice_point_filtered()$supervising_office)),
                        "<br>
                        <b>Agency:</b> ", data_ice_point_filtered()$agency,
                        "<br>
                        <b>County:</b> ", data_ice_point_filtered()$county),
-              data_ice_point_filtered()$icetype == "Detention Facilities" ~ 
+              data_ice_point_filtered()$icetype == "ICE Detention Facilities" ~ 
                 paste0("<b>Detention Facility:</b> ", data_ice_point_filtered()$name,
                        "<br>
                        <b>Facility Code:</b> ", data_ice_point_filtered()$detention_facility_code,
@@ -231,6 +234,16 @@ server <- function(input, output) {
                                               data_ice_point_filtered()$addendum == "link pending" ~ "Link Pending",
                                               is.na(data_ice_point_filtered()$addendum) ~ "None Listed",
                                               .default = data_ice_point_filtered()$addendum)),
+              data_ice_point_filtered()$icetype == "FBI Offices" ~ 
+                paste0("<b>FBI Office:</b> ", data_ice_point_filtered()$name,
+                       "<br>
+                       <b>Office Type:</b> ", data_ice_point_filtered()$type,
+                       ifelse(data_ice_point_filtered()$type == "Resident Agency",
+                              paste0("<br>
+                                     <b>Supervising Office:</b> ", data_ice_point_filtered()$supervising_office,
+                                     "<br>"),
+                              "<br>"),
+                       "<b>Coverage Area:</b> ", data_ice_point_filtered()$coverage),
               .default = "") %>%
       # ensure output always has length > 0 even if no ice data selected for display 
       { if(length(.) == 0) paste0("No Data") else . } %>%
@@ -335,8 +348,8 @@ server <- function(input, output) {
         addLegend(map = .,
                   data = data_ice_point_filtered(),
                   position = "bottomright",
-                  title = "ICE Type",
-                  pal = colorFactor(palette = unique(data_ice_point_filtered()$icetype_color),
+                  title = "Law Enforcement Type",
+                  pal = colorFactor(palette = unique(data_ice_point_filtered()$icetype_color),     #### FIX ORDER OF LEGEND OPTIONS
                                     domain = data_ice_point_filtered()$icetype),
                   values = ~ icetype,
                   layerId = "icelegend") }
@@ -459,11 +472,13 @@ server <- function(input, output) {
   
   # generate summary readout tab
   output$summary <- renderText({
-    paste0("<b>Field Offices Displayed:</b> ", nrow(filter(data_ice_point_filtered(), icetype == "Field Offices")),
+    paste0("<b>ICE Field Offices Displayed:</b> ", nrow(filter(data_ice_point_filtered(), icetype == "ICE Field Offices")),
            "<br>
-            <b>Detention Facilities Displayed:</b> ", nrow(filter(data_ice_point_filtered(), icetype == "Detention Facilities")),
+            <b>ICE Detention Facilities Displayed:</b> ", nrow(filter(data_ice_point_filtered(), icetype == "ICE Detention Facilities")),
            "<br>
-            <b>287(g) Agreements Displayed:</b> ", nrow(filter(data_ice_point_filtered(), icetype == "287(g) Agreements")))
+            <b>287(g) Agreements Displayed:</b> ", nrow(filter(data_ice_point_filtered(), icetype == "287(g) Agreements")),
+           "<br>
+            <b>FBI Offices Displayed:</b> ", nrow(filter(data_ice_point_filtered(), icetype == "FBI Offices")))
   })
   
   output$about <- renderText({
@@ -475,9 +490,68 @@ server <- function(input, output) {
            </style>
            
           <p class = title><b>CONCEPT</b></p>
-          This app visualizes . ATTRIBUTION. This product uses the Census Bureau Data API but is not endorsed or certified by the Census Bureau.
-           <br>
-           ICE Field Offices, Sub-Offices, Detention Centers: 'government data published by ICE, collated by the Deportation Data Project, and analyzed by [your organization].'")
+          This app visualizes ICE activity and other potential election threats across Pennsylvania, 
+          overlaid on background demographics of community racial composition and political competitiveness.
+          <br>
+          
+          <br><p class = title><b>CONTENT</b></p>
+          This app contains two dashboards, one for ICE activity and election threats and the other for
+          ACLU-PA volunteer infrastructure.
+          <p></p>
+          <b>1. ICE Dashboard</b>
+          <br>The map visualization shows one dot for each ballot cast but uncounted in the 2024 Pennsylvania general election. Each dot is located at the
+          mailing address at which the voter requested the ballot. For this reason, some dots appear outside of Pennsylvania. These dots represent ballots
+          requested by Pennsylvanians residing out of state around the time of the election.
+          <p></p>
+          <p style = 'margin-left: 15px;'>
+            <b> — <i>Law Enforcement Activity</i></b> selects the kind of law enforcement activity to visualize in points on the map.
+            Options include ICE field offices (in red), ICE detention centers (in purple), 287(g) agreements between ICE and local
+            law enforcement (in orange), and FBI offices (in blue).
+            <br><b> — <i>Background Demographic</i></b> selects the demographic to display. Users can turn off the demographic display by deselecting 'Show
+            Demographic' in the 'Map Aesthetics' menu. The app takes its racial demographic categories from the American Community Survey, adminstered
+            by the US Census Bureau.
+            <br><b> — <i>287(g) Dates Signed</i></b> subsets all 287(g) agreements by the date each participating local law
+            enforcement agency signed its agreement with ICE. Available 287(g) agreements span dates from ____ to ____.
+            <br><b> — <i>Background Demographic</i></b> selects the demographic to display for the selected background geography. 
+            Options include a geography's electoral race characterization (Standard, Competitive, or No Election), total population,
+            total non-white population, and total Hispanic or Latino population.
+            <br><b> — <i>Geography</i></b> selects which background geography to map. Options include Pennsylvania counties, 
+            municipalities, US House Districts, General Assembly Senate Districts, and General Assembly House Districts.
+          <br>
+          <p></p>
+            <p style = 'margin-left: 15px;'>
+            <b>MAP CLICKABILITY</b>
+            <br>Users can access quick geographically-specific demographic statistics by clicking on geographies of interest. To close a popup, click the
+            selected geography again. To close all popups, click the 'Clear All Popups' button in the control panel.
+            </p>
+          <b>2. MAPPED VOTER CONTACTS</b>
+          <p style = 'margin-left: 15px;'>
+            This widget produces a table with the name, mailing address, contact information, and county of registration of each voter in the current selection
+            of ballots. Users can search for specific names and addresses in the search bar at the widget's upper right-hand corner.
+          <br>
+          </p>
+          <b>3. COUNTY-LEVEL READOUT</b>
+          <p style = 'margin-left: 15px;'>
+            This widget produces a summary table with the county-level totals of ballots in the current selection.
+          <br>
+          </p>
+          <b>4. STATEWIDE READOUT</b>
+          <p style = 'margin-left: 15px; margin-bottom: 0;'>
+            This widget produces several statewide summary statistics of ballots in the current selection, including the raw number of ballots in the current selection
+            and the percentage of selected ballots in the total set of uncounted mail ballots (excluding those marked 'PEND - NOT YET RETURNED' and 'CANC - LABEL
+            CANCELLED'). The widget also breaks down the total set of uncounted mail ballots into three broad categories: all those canceled ('CANC - '), pending
+            ('PEND - '), and other ('NO SURE CODE - ').
+          </p>
+          
+          <br><p class = title><b>ATTRIBUTION</b></p>
+          This product uses the Census Bureau Data API but is not endorsed or certified by the Census Bureau.
+          <br>ICE Field Offices, Sub-Offices, Detention Centers: 'government data published by ICE, collated by the Deportation Data Project, and analyzed by [your organization].'
+          <br>
+          
+          <br><p class = title><b>AUTHOR</b></p>
+          Jack Starobin, Voting Rights Litigation Associate, ACLU-PA 2026
+          <br>
+          <br>")
   })
   
 }
