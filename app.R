@@ -137,7 +137,7 @@ ui <- navbarPage(
                                    width = "98.5%"),
                           br()
                  ),
-                 tabPanel("Background Geography Table",
+                 tabPanel("Background Demographics Table",
                           br(),
                           downloadBttn(outputId = "iceAggCSV",
                                        label = "Export as .CSV",
