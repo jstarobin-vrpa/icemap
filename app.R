@@ -21,7 +21,9 @@ load("ice_data.RData")
 # define UI     
 
 ui <- navbarPage(
-  title = paste("ICE in Pennsylvania, 2026 - FOR INTERNAL USE ONLY - DO NOT SHARE"),
+  title = paste0("ICE in Pennsylvania, 2026 - Updated ", 
+                 format(datecheck, "%m/%d/%Y"),
+                 " - FOR INTERNAL USE ONLY - DO NOT SHARE"),
   # set theme
   theme = shinytheme("cosmo"),
   # set HTML tags style
@@ -29,7 +31,8 @@ ui <- navbarPage(
              # for moving "No Data" box to bottom of legend
              "div.info.legend.leaflet-control br {clear: both;}",
              "#leafletMap {height: calc(87vh) !important;}"),
-  tabPanel("Dashboard",
+  # law enforcement activity map with coalition resource overlays
+  tabPanel("Election Threats Dashboard",
            # map sidebar
            sidebarLayout(
              sidebarPanel(
@@ -62,6 +65,14 @@ ui <- navbarPage(
                                                         max(data_ice_point$signed, na.rm = TRUE)),
                                               ticks = FALSE,
                                               timeFormat = "%D"
+                                            ),
+                                            sliderInput(
+                                              inputId = "capacity_detention",
+                                              label = "Detention Facility Max Recorded Capacity, Past 365 Days",
+                                              min = 0,
+                                              max = max(data_ice_point$max_daily_population_last_year, na.rm = TRUE),
+                                              value = max(data_ice_point$max_daily_population_last_year, na.rm = TRUE),
+                                              ticks = FALSE
                                             )
                                           ),
                                           pickerInput(
@@ -126,27 +137,27 @@ ui <- navbarPage(
                  ),
                  tabPanel("Law Enforcement Activity Table",
                           br(),
-                          downloadBttn(outputId = "iceActivityCSV",
+                          downloadBttn(outputId = "csv_ice_point",
                                        label = "Export as .CSV",
                                        style = "bordered",
                                        color = "primary",
                                        size = "sm"),
                           br(),
                           br(),
-                          DTOutput("iceActivityTable",
+                          DTOutput("table_ice_point",
                                    width = "98.5%"),
                           br()
                  ),
                  tabPanel("Background Demographics Table",
                           br(),
-                          downloadBttn(outputId = "iceAggCSV",
+                          downloadBttn(outputId = "csv_polygons",
                                        label = "Export as .CSV",
                                        style = "bordered",
                                        color = "primary",
                                        size = "sm"),
                           br(),
                           br(),
-                          DTOutput("countyReadout",
+                          DTOutput("table_polygons",
                                    width = "98.5%"),
                           br()
                  ),
@@ -158,8 +169,10 @@ ui <- navbarPage(
              fluid = TRUE
            )
   ),
+  # mail ballot aggregator
+  tabPanel("Mail Ballot Aggregator"),           ######### EDIT
+  # about page
   tabPanel("About",
-           ## About page
            htmlOutput("about")
   )
 )
@@ -172,8 +185,13 @@ server <- function(input, output) {
       filter(icetype %in% input$ice) %>%
       { if(any("287(g) Agreements" %in% .$icetype)) 
         filter(., (.$signed >= input$time_287g[1] & .$signed <= input$time_287g[2]) | 
-                 is.na(.$signed))
-        else 
+                 is.na(.$signed)) 
+        else
+          . } %>%
+      { if(any("ICE Detention Facilities" %in% .$icetype)) 
+        filter(., .$max_daily_population_last_year <= input$capacity_detention | 
+                 is.na(.$max_daily_population_last_year)) 
+        else
           . } %>%
       mutate(icetype_color = case_when(icetype == "ICE Field Offices" ~ "#eb301e",
                                        icetype == "ICE Detention Facilities" ~ "#9c4deb",
@@ -185,6 +203,7 @@ server <- function(input, output) {
   }) %>%
     bindEvent(input$ice, 
               input$time_287g,
+              input$capacity_detention,
               ignoreNULL = FALSE)
   
   # create HTML tags for ICE labels and popups
@@ -196,9 +215,7 @@ server <- function(input, output) {
                                      "<br>
                                      <b>Supervising Office:</b> ", data_ice_point_filtered()$supervising_office)),
                        "<br>
-                       <b>Agency:</b> ", data_ice_point_filtered()$agency,
-                       "<br>
-                       <b>County:</b> ", data_ice_point_filtered()$county),
+                       <b>Agency:</b> ", data_ice_point_filtered()$agency),
               data_ice_point_filtered()$icetype == "ICE Detention Facilities" ~ 
                 paste0("<b>Detention Facility:</b> ", data_ice_point_filtered()$name,
                        "<br>
@@ -208,13 +225,19 @@ server <- function(input, output) {
                        "<br>
                        <b>Detention Stats, Past 365 Days:</b>
                        <p style = 'margin-left: 3px;'>
-                       - Days with At Least One Detention: ", data_ice_point_filtered()$days_with_detentions_daily_last_year,
+                       - Days with At Least One Detention: ", ifelse(is.na(data_ice_point_filtered()$days_with_detentions_daily_last_year),
+                                                                     "No Data",
+                                                                     data_ice_point_filtered()$days_with_detentions_daily_last_year),
                        "<br>
-                       - Average Daily Detention Population: ", ifelse(round(data_ice_point_filtered()$average_daily_population_last_year) >= 1,
-                                                                       format(round(data_ice_point_filtered()$average_daily_population_last_year), big.mark = ","),
-                                                                       " < 1 "),
+                       - Average Daily Detention Population: ", case_when(round(data_ice_point_filtered()$average_daily_population_last_year) >= 1 ~
+                                                                            format(round(data_ice_point_filtered()$average_daily_population_last_year), big.mark = ","),
+                                                                          round(data_ice_point_filtered()$average_daily_population_last_year) < 1 ~
+                                                                            " < 1",
+                                                                          .default = "No Data"),
                        "<br>
-                       - Max Daily Detention Population: ", format(data_ice_point_filtered()$max_daily_population_last_year, big.mark = ","),
+                       - Max Daily Detention Population: ", ifelse(is.na(data_ice_point_filtered()$max_daily_population_last_year),
+                                                                   "No Data",
+                                                                   format(data_ice_point_filtered()$max_daily_population_last_year, big.mark = ",")),
                        "</p>"),
               data_ice_point_filtered()$icetype == "287(g) Agreements" ~ 
                 paste0("<b>287(g) Agreement:</b> ", data_ice_point_filtered()$name,
@@ -243,7 +266,7 @@ server <- function(input, output) {
                                      <b>Supervising Office:</b> ", data_ice_point_filtered()$supervising_office,
                                      "<br>"),
                               "<br>"),
-                       "<b>Coverage Area:</b> ", data_ice_point_filtered()$coverage),
+                       "<b>Coverage Area:</b> ", data_ice_point_filtered()$coverage_area),
               .default = "") %>%
       # ensure output always has length > 0 even if no ice data selected for display 
       { if(length(.) == 0) paste0("No Data") else . } %>%
@@ -253,8 +276,8 @@ server <- function(input, output) {
     bindEvent(data_ice_point_filtered())
   
   # user selects geography
-  data_census_filtered <- reactive({
-    data_census %>%
+  data_polygons_filtered <- reactive({
+    data_polygons %>%
       filter(geotype %in% input$geography) %>%
       { if(input$demographic == "None")
         select(., name, geometry)
@@ -269,34 +292,44 @@ server <- function(input, output) {
   # update geography color scheme with demographic selection
   census_pal <- reactive({
     if(input$demographic == "Electoral Races") {
-      colorFactor(palette = c("salmon", "lightgray", "lightgray"),
-                  levels = sort(unique(data_census$`Electoral Races`)))
+      colorFactor(palette = c("salmon", "lightgray"),
+                  levels = sort(unique(data_polygons_filtered()[[2]])),
+                  na.color = "lightgray")
     } else if(input$demographic == "ACLU-PA Priority/Risk") {
       colorFactor(palette = c("purple", "orange", "beige"),
-                  levels = unique(pull(data_census_filtered()), 2))
-    } else if(grepl("Population|Proportion", input$demographic)) {
+                  levels = unique(data_polygons_filtered())[[2]],
+                  na.color = "lightgray")
+    } else if(grepl("Population|Proportion", input$demographic) &
+              !all(is.na(data_polygons_filtered()[[2]]))) {
       colorNumeric(palette = "Blues",
-                   domain = pull(data_census_filtered(), 2)) 
+                   domain = data_polygons_filtered()[[2]],
+                   na.color = "lightgray") 
     } else if(input$demographic == "None") {
+      "lightgray"
+    } else {
       "lightgray"
     }
   }) %>%
-    bindEvent(data_census_filtered())
+    bindEvent(data_polygons_filtered())
   
   # create HTML tags for geography labels and popups
   tags_geo <- reactive({
-    paste0("<b>Geography:</b> ", data_census_filtered()$name,
+    paste0("<b>Geography:</b> ", data_polygons_filtered()$name,
            "<br>
            <b>", case_when(input$demographic == "Electoral Races" ~ "Contest Type: ",
                            input$demographic == "None" ~ "",
                            .default = paste0(input$demographic, ": ")), "</b>",
            if(input$demographic == "None") { "" }
-           else if(is.numeric(data_census_filtered()[[2]])) { format(data_census_filtered()[[2]], big.mark = ",") }
-           else if(is.character(data_census_filtered()[[2]])) { data_census_filtered()[[2]] }) %>%      ##### FIX DEFUNCT COLUMNS
+           else if(is.numeric(data_polygons_filtered()[[2]])) { ifelse(is.na(data_polygons_filtered()[[2]]),
+                                                                       "No Data",
+                                                                       format(data_polygons_filtered()[[2]], big.mark = ",")) }
+           else if(is.character(data_polygons_filtered()[[2]])) { ifelse(is.na(data_polygons_filtered()[[2]]),
+                                                                         "No Data",
+                                                                         data_polygons_filtered()[[2]]) }) %>%      ##### FIX DEFUNCT COLUMNS
       # render text as HTML
       lapply(HTML)
   }) %>%
-    bindEvent(data_census_filtered())
+    bindEvent(data_polygons_filtered())
   
   # generate leaflet map
   output$leafletMap <- renderLeaflet({
@@ -340,7 +373,7 @@ server <- function(input, output) {
                        labelOptions = labelOptions(direction = "left"),
                        popup = tags_ice(),
                        popupOptions = popupOptions(autoClose = FALSE,
-                                                   direction = "left",   ###### FIX - NOT DOING ANYTHING ATM
+                                                   direction = "left", ##### EDIT - CURRENTLY NOT DOING ANYTHING
                                                    closeOnClick = FALSE),
                        group = "icemarkers",
                        options = pathOptions(pane = "markers")) %>%
@@ -364,7 +397,7 @@ server <- function(input, output) {
     pal_full <- if(class(pal) == "function") {
       # if census_pal() returns a function,
       # input census data to generate palette for fillColor
-      pal(pull(data_census_filtered(), 2))
+      pal(data_polygons_filtered()[[2]])
       # if census_pal() returns single-value character vector,
       # return single value for fillColor
     } else {
@@ -374,7 +407,7 @@ server <- function(input, output) {
     proxy %>%
       clearGroup(., "geoshapes") %>%
       removeControl("geolegend") %>%
-      addPolygons(data = data_census_filtered(),     ### integrate municipality lines
+      addPolygons(data = data_polygons_filtered(),    
                   stroke = TRUE,
                   color = "black",
                   weight = 1,
@@ -390,15 +423,15 @@ server <- function(input, output) {
                   options = pathOptions(pane = "polygons")) # %>%
      # { if(input$geography != "None") 
     #    addLegend(map = .,
-     #             data = data_census_filtered(),
+     #             data = data_polygons_filtered(),
     #              position = "bottomright",
      #             title = "Contest Type",
-    #              pal = colorFactor(palette = unique(data_census_filtered()$contest_color),
-     #                               domain = data_census_filtered()$contest),
+    #              pal = colorFactor(palette = unique(data_polygons_filtered()$contest_color),
+     #                               domain = data_polygons_filtered()$contest),
     #              values = ~ contest,
     #              layerId = "geolegend") }
   }) %>%
-    bindEvent(data_census_filtered(), input$popup_clear)
+    bindEvent(data_polygons_filtered(), input$popup_clear)
   
   # clear popups on click
   observe({
@@ -407,9 +440,7 @@ server <- function(input, output) {
   }) %>%
     bindEvent(input$popup_clear)
   
-  # create ice activity table widget
-  
-  # COMMENT
+  # create table of select ice activity
   data_ice_point_filtered_export <- reactive({
     data_ice_point_filtered() %>%
       mutate(MOA = ifelse(!is.na(moa_link),
@@ -438,12 +469,16 @@ server <- function(input, output) {
              "Detention Facility Code" = detention_facility_code,
              "Days with Detentions, Past 365 Days" = days_with_detentions_daily_last_year,
              "Average Daily Detention Population, Past 365 Days" = average_daily_population_last_year,
-             "Max Daily Detention Population, Past 365 Days" = max_daily_population_last_year) %>%
+             "Max Daily Detention Population, Past 365 Days" = max_daily_population_last_year,
+             "Date Signed" = signed,
+             "Coverage Type" = coverage_geotype,
+             "Coverage Area" = coverage_area) %>%
       st_drop_geometry()
   })
   
-  output$iceActivityTable <- renderDT({
-    datatable(data_ice_point_filtered_export(),
+  # render table of select ice activity
+  output$table_ice_point <- renderDT({
+    datatable(data_ice_point_filtered_export(),                   ######## FIX LINK DOWNLOAD FORMATTING
               rownames = FALSE,
               options = list(pageLength = 50,
                              initComplete = JS(
@@ -454,17 +489,60 @@ server <- function(input, output) {
               # read HTML instead of escaping to normal string
               escape = FALSE
     ) %>%
-      formatStyle(columns = 1:6,
-                  backgroundColor = "white")
+      formatRound(columns = c("Average Daily Detention Population, Past 365 Days",
+                              "Max Daily Detention Population, Past 365 Days"),
+                  digits = 0)
   })
   
-  ## Create voter contacts download behavior
-  output$iceActivityCSV <- downloadHandler(
+  # download handler for select ice activity
+  output$csv_ice_point <- downloadHandler(
     filename = function() {
-      paste0("ice-activity", "-test", ".csv")         #### CHANGE DOWNLOAD NAME
+      paste0("lea-activity-", datecheck, ".csv")
     },
     content = function(file) {
       write.csv(data_ice_point_filtered_export(),
+                file,
+                row.names = FALSE)
+    }
+  )
+  
+  # create table of select background demographics
+  data_polygons_filtered_export <- reactive({
+    data_polygons %>%
+      filter(geotype %in% input$geography) %>%
+      select(-c(geotype,
+                estimate_B01001H_001,
+                starts_with("moe_"),     ##### REVISIT
+                county)) %>%
+      rename(Geography = name) %>%
+      st_drop_geometry()
+  })
+  
+  # render table of select background demographics
+  output$table_polygons <- renderDT({
+    datatable(data_polygons_filtered_export(),
+              rownames = FALSE,
+              options = list(pageLength = 50,
+                             initComplete = JS(
+                               "function(settings, json) {",
+                               "$(this.api().table().header()).css({'background-color': 'white'});",
+                               "}")
+              ),
+              # read HTML instead of escaping to normal string
+              escape = FALSE
+    ) %>%
+      formatRound(columns = 3:5,
+                  digits = 0,
+                  mark = ",")
+  })
+  
+  # download handler for select background demographics
+  output$csv_polygons <- downloadHandler(
+    filename = function() {
+      paste0("background-", datecheck, ".csv")
+    },
+    content = function(file) {
+      write.csv(data_polygons_filtered_export(),
                 file,
                 row.names = FALSE)
     }
